@@ -1,70 +1,138 @@
 # Web Application Infrastructure using AWS CDK
 
-This repository contains the infrastructure code to deploy a scalable, secure, and highly available web application on AWS using Python and the AWS Cloud Development Kit (CDK).
+This project contains the infrastructure code to deploy a web application on AWS using Python and AWS CDK. The stack is designed to be scalable, secure, and easy to deploy.
 
 ## Architecture
 
-The stack provisions the following resources:
-1. **VPC**: A Virtual Private Cloud with public and private subnets across 2 Availability Zones. Includes a NAT Gateway.
-2. **ECS & ASG**: An Elastic Container Service (ECS) Cluster with an underlying Auto Scaling Group (min 2, max 4 instances). It runs instances in the private subnets.
-3. **Application Load Balancer (ALB)**: Situated in the public subnets, this ALB distributes incoming HTTP traffic to the ECS tasks running `nginxdemos/hello`.
-4. **S3 Bucket**: A secure, private S3 bucket meant for storing static assets, configured to allow CORS for pre-signed URLs.
-5. **RDS Database**: A PostgreSQL database instance provisioned in the private subnets, accessible by the ECS application.
+The infrastructure is built around a VPC with public and private subnets spread across 2 Availability Zones. A NAT Gateway is included so that instances in the private subnets can reach the internet without being publicly exposed.
+
+ECS tasks run inside the private subnets on EC2 instances managed by an Auto Scaling Group. The ASG is configured with a minimum of 2 instances and a maximum of 4, so the application can handle varying traffic loads automatically.
+
+An Application Load Balancer sits in the public subnets and distributes incoming HTTP traffic to the ECS tasks. The ALB security group is locked down to only allow traffic on port 80 and port 443.
+
+A private S3 bucket is used to store static assets for the web application. The bucket is encrypted, has public access fully blocked, and content is accessed using pre-signed URLs.
+
+As a bonus, a PostgreSQL RDS instance is provisioned in the private subnets. It is encrypted at rest and only accessible from the ECS instances.
 
 ## Prerequisites
 
-- **Python 3**: Ensure you have Python installed.
-- **Node.js & npm**: Required to install the CDK CLI.
-- **AWS CDK CLI**: Install globally via `npm install -g aws-cdk`.
-- **AWS CLI**: Installed and configured with your AWS credentials (`aws configure`).
+Before deploying, make sure you have the following installed and configured:
+
+Python 3.9 or above
+
+Node.js and npm (needed for the CDK CLI)
+
+AWS CDK CLI — install it by running:
+```bash
+npm install -g aws-cdk
+```
+
+AWS CLI — install and configure with your credentials:
+```bash
+aws configure
+```
 
 ## Setup and Deployment
 
-1. **Initialize Virtual Environment:**
-   Create and activate a virtual environment in the root of the project:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+Clone the repository and navigate into the project folder:
+```bash
+git clone https://github.com/UdayKiran-J23/webapp-cdk.git
+cd webapp-cdk
+```
 
-2. **Install Dependencies:**
-   Install the necessary Python requirements:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Create and activate a virtual environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-3. **Bootstrap the Environment:**
-   If this is your first time using CDK in your AWS account and region, you need to bootstrap it:
-   ```bash
-   cdk bootstrap aws://<ACCOUNT-ID>/<REGION>
-   ```
+On Windows use:
+```bash
+.venv\Scripts\activate
+```
 
-4. **Synthesize the CloudFormation Template:**
-   Verify that the CDK code synthesizes properly:
-   ```bash
-   cdk synth
-   ```
+Install the required Python packages:
+```bash
+pip install -r requirements.txt
+```
 
-5. **Deploy the Stack:**
-   Deploy the infrastructure to your AWS account. You will be prompted to confirm security-related changes:
-   ```bash
-   cdk deploy
-   ```
+If this is your first time using CDK in your AWS account and region, bootstrap it:
+```bash
+cdk bootstrap aws://<ACCOUNT-ID>/<REGION>
+```
+
+Check that the CDK code synthesizes without errors:
+```bash
+cdk synth
+```
+
+Deploy the stack to your AWS account:
+```bash
+cdk deploy
+```
+
+You will be asked to confirm any IAM or security group changes. Type y to proceed.
 
 ## Post-Deployment Outputs
 
-After a successful deployment, the CDK CLI will output three important values:
-- `LoadBalancerDNS`: The public DNS name of the ALB to access the `nginxdemos/hello` web service.
-- `S3BucketName`: The name of the S3 bucket created for your static assets.
-- `RDSEndpoint`: The endpoint address for your PostgreSQL database.
+Once the deployment finishes, the CDK will print three important values:
+
+LoadBalancerDNS — the public DNS name of the ALB. Open this in your browser to see the running web application.
+
+S3BucketName — the name of the S3 bucket created for static assets.
+
+RDSEndpoint — the endpoint address for the PostgreSQL database.
+
+## Generating a Pre-Signed URL for S3
+
+Since the S3 bucket is fully private, files are accessed using pre-signed URLs. Here is a simple example using boto3:
+
+```python
+import boto3
+
+s3_client = boto3.client('s3', region_name='<YOUR-REGION>')
+
+url = s3_client.generate_presigned_url(
+    'get_object',
+    Params={
+        'Bucket': '<YOUR-BUCKET-NAME>',
+        'Key': 'your-file.txt'
+    },
+    ExpiresIn=3600
+)
+
+print(url)
+```
+
+The URL will be valid for 1 hour. You can adjust ExpiresIn as needed.
+
+## Security Decisions
+
+ECS task roles follow least privilege — only the specific S3 and CloudWatch actions needed are allowed, no FullAccess policies.
+
+ECS instances and the RDS database run in private subnets and are not reachable from the internet directly.
+
+The ALB security group only allows HTTP and HTTPS traffic.
+
+The S3 bucket has server-side encryption enabled and SSL is enforced on all requests.
+
+The RDS instance has storage encryption enabled.
 
 ## Cleaning Up
 
-To destroy the deployed resources and avoid incurring future charges, run:
+To remove all the deployed resources and stop incurring AWS charges, run:
 ```bash
 cdk destroy
 ```
 
-## Bonus Features Included
-- Integrated an RDS PostgreSQL Instance in the private subnets.
-- Configured secure default parameters (e.g., S3 Bucket Encryption, Block Public Access, IAM Least Privilege policies, Destroy Removal policies for easy teardown during testing).
+## Bonus Features
+
+An RDS PostgreSQL instance is included in the private subnets with encryption at rest.
+
+IAM policies are scoped to least privilege instead of using broad managed policies.
+
+S3 bucket versioning is enabled.
+
+Health checks are configured on the ALB target group.
+
+CORS on the S3 bucket is restricted to the ALB DNS origin only.
